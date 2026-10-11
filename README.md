@@ -18,7 +18,7 @@ python src/clean_tabular.py
 Reads the nine yearly `ListedCompanyFeatures772_<year>.csv` files and writes:
 
 - `data/processed/tabular_clean/<year>.parquet`: one row per company-year, with `nodeID`, `Year`, `Label` and 666 features.
-- `data/processed/cleaning_log.csv`: every raw column with its description, whether it was kept or dropped (and why), and its missing rate before and after.
+- `data/processed/cleaning_log.csv`: every raw column with its description, whether it was kept or dropped, the reason, and its missing rate before and after.
 
 Load all years at once:
 
