@@ -27,7 +27,7 @@ import pandas as pd
 df = pd.read_parquet("data/processed/tabular_clean")
 ```
 
-To verify the output, run `notebooks/check_cleaning.ipynb`. It compares raw and cleaned data with before/after examples and prints `PASS` for each check.
+
 
 What the cleaning does:
 
