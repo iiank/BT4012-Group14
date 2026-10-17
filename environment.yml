@@ -8,3 +8,6 @@ dependencies:
   - pyarrow
   - matplotlib
   - ipykernel
+  - pip
+  - pip:
+      - jieba
