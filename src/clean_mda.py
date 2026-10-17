@@ -32,6 +32,8 @@ ROOT = Path(__file__).resolve().parents[1]
 RAW = ROOT / "data" / "processed" / "mda_raw.parquet"
 OUT_DIR = ROOT / "data" / "processed" / "mda_clean"
 STOPWORDS_FILE = ROOT / "data" / "stopwords" / "hit_stopwords.txt"
+# Yao et al. (2021) formal financial sentiment words, added to jieba so they stay whole
+SENTIMENT_FILES = sorted((ROOT / "data" / "sentiment").glob("yao2021_formal_*.txt"))
 YEARS = range(2014, 2023)
 
 EXCEL_CELL_LIMIT = 32_767
@@ -41,6 +43,9 @@ STOPWORDS = {
     unicodedata.normalize("NFKC", line).strip()
     for line in STOPWORDS_FILE.read_text(encoding="utf-8").splitlines()
 } - {""}
+
+for path in SENTIMENT_FILES:
+    jieba.load_userdict(str(path))
 
 CJK = r"一-鿿"
 SPACE_NEXT_TO_CJK = re.compile(rf"(?<=[{CJK}])[ \t]+|[ \t]+(?=[{CJK}])")
