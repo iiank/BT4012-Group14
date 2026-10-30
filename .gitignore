@@ -4,3 +4,6 @@ data/processed/tabular_clean/
 .DS_Store
 __pycache__/
 .ipynb_checkpoints/
+
+# misc
+docs/
