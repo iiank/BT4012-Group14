@@ -11,3 +11,5 @@ dependencies:
   - pip
   - pip:
       - jieba
+      - torch
+      - transformers

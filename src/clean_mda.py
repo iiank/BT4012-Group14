@@ -48,6 +48,7 @@ for path in SENTIMENT_FILES:
     jieba.load_userdict(str(path))
 
 CJK = r"一-鿿"
+HAS_CJK = re.compile(rf"[{CJK}]")
 SPACE_NEXT_TO_CJK = re.compile(rf"(?<=[{CJK}])[ \t]+|[ \t]+(?=[{CJK}])")
 DOT_RUN = re.compile(r"\.{4,}")
 # B4: standard disclosure-exemption sentence. PDF line breaks can fall anywhere inside it.
@@ -128,7 +129,8 @@ def process(text: object) -> tuple[int, int, str, str, str]:
         return 0, 0, "", "", ""
     truncated = int(len(text) == EXCEL_CELL_LIMIT)
     text_clean = clean(text, bool(truncated))
-    if len(text_clean) < MIN_CHARS:
+    # Too short, or no Chinese at all (garbled encoding in the source): no usable text.
+    if len(text_clean) < MIN_CHARS or not HAS_CJK.search(text_clean):
         return 0, truncated, "", "", ""
     words = [w for w in jieba.lcut(text_clean) if w.strip()]
     tokens = [
