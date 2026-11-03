@@ -47,7 +47,14 @@ python src/build_tabular_features.py 0      # a specific fold
 
 Reads `data/processed/tabular_clean` and writes two kinds of output, the same split as the MD&A text pipeline (`src/build_text_features.py` vs. `src/build_text_tfidf.py`):
 
-- **Fold-independent** (nothing fitted, safe to share across every fold) — `data/processed/tabular_features/<year>.parquet` and `data/processed/feature_engineering_log.csv`. Drops near-duplicate columns (`|corr| > 0.95` within a feature group; every drop logged with the real pairwise correlation and the column that actually survives), tames monetary skew with `sign(x) * log1p(|x|)`, adds a year-over-year delta for every remaining numeric column (except the two geographic columns), one-hot encodes `IndustryCodeC`, and adds a `_was_missing` flag per incomplete column plus one shared `is_first_year_on_record` flag for every company's first row.
-- **Per fold** (fitted on that fold's training rows only, per `data/splits/temporal_splits.csv`) — `data/processed/tabular_features_folds/split_<s>/<year>.parquet`: median imputation then `RobustScaler`, mirroring how `build_text_tfidf.py` fits its vocabulary and SVD on train rows only.
+1. **Fold-independent** (nothing fitted, safe to share across every fold) — `data/processed/tabular_features/<year>.parquet` and `data/processed/feature_engineering_log.csv`:
+- Drops near-duplicate columns with `|corr| > 0.95` within a feature group. Every drop is logged with the real pairwise correlation and the column that actually survives.
+- Tames monetary skew with `sign(x) * log1p(|x|)`
+- adds a year-over-year delta for every remaining numeric column (except the two geographic columns)
+- one-hot encodes `IndustryCodeC`
+- adds a `_was_missing` flag per incomplete column plus one shared `is_first_year_on_record` flag for every company's first row.
+
+2. **Per fold** (fitted on that fold's training rows only, per `data/splits/temporal_splits.csv`) — `data/processed/tabular_features_folds/split_<s>/<year>.parquet`:
+- median imputation then `RobustScaler`, mirroring how `build_text_tfidf.py` fits its vocabulary and SVD on train rows only.
 
 Load either one with `pd.read_parquet("data/processed/tabular_features")` or `pd.read_parquet("data/processed/tabular_features_folds/split_<s>")` — both are split by year for the same reason `tabular_clean` is (GitHub's 100 MB file limit). Verified end-to-end in `notebook/check_features.ipynb`, including an explicit check that each fold's imputer/scaler never saw that fold's test rows.
