@@ -41,23 +41,50 @@ Remaining missing values (about 2.5% of cells, mostly ratios that are undefined 
 ### Feature engineering
 
 ```
-python src/build_tabular_features.py        # all folds
-python src/build_tabular_features.py 0      # a specific fold
+python src/clean_tabular.py                 # if you haven't already — this reads tabular_clean
+python src/build_tabular_features.py        # all folds, ~30s total
+python src/build_tabular_features.py 0      # or just one fold, ~5s
 ```
 
-Reads `data/processed/tabular_clean` and writes two kinds of output, the same split as the MD&A text pipeline (`src/build_text_features.py` vs. `src/build_text_tfidf.py`):
+Outputs are gitignored (too large for GitHub, ~105 MB and ~325 MB) — unlike the MD&A text files below, which are committed directly.
 
-1. **Fold-independent** (nothing fitted, safe to share across every fold) — `data/processed/tabular_features/<year>.parquet` and `data/processed/feature_engineering_log.csv`:
-- Drops near-duplicate columns with `|corr| > 0.95` within a feature group. Every drop is logged with the real pairwise correlation and the column that actually survives.
-- Tames monetary skew with `sign(x) * log1p(|x|)`
-- adds a year-over-year delta for every remaining numeric column (except the two geographic columns)
-- one-hot encodes `IndustryCodeC`
-- adds a `_was_missing` flag per incomplete column plus one shared `is_first_year_on_record` flag for every company's first row.
+Reads `data/processed/tabular_clean` and writes two kinds of output, the same split as the MD&A text pipeline (`src/build_text_features.py` vs. `src/build_text_tfidf.py`). Neither has a `Label` column — take `Label` from `tabular_clean`, same rule as the text files.
 
-2. **Per fold** (fitted on that fold's training rows only, per `data/splits/temporal_splits.csv`) — `data/processed/tabular_features_folds/split_<s>/<year>.parquet`:
-- median imputation then `RobustScaler`, mirroring how `build_text_tfidf.py` fits its vocabulary and SVD on train rows only.
+| Output | What's in it | Fitted? | Which split uses it |
+|---|---|---|---|
+| `data/processed/tabular_features/<year>.parquet` | 1,238 columns: deduped + log-transformed originals, YoY deltas, industry one-hot, missing-indicator flags | No — safe to share | **All splits** |
+| `data/processed/tabular_features_folds/split_<s>/<year>.parquet` | Same 1,238 columns, imputed + scaled | Yes — median/`RobustScaler` fit on split `s`'s train rows only | **Only split `s`** |
+| `data/processed/feature_engineering_log.csv` | Every dropped column, what it matched, the real correlation, and what actually survives | — | Reference only |
 
-Load either one with `pd.read_parquet("data/processed/tabular_features")` or `pd.read_parquet("data/processed/tabular_features_folds/split_<s>")` — both are split by year for the same reason `tabular_clean` is (GitHub's 100 MB file limit). Verified end-to-end in `notebook/check_features.ipynb`, including an explicit check that each fold's imputer/scaler never saw that fold's test rows.
+1. **Fold-independent** (nothing fitted, safe to share across every fold):
+   - Drops near-duplicate columns with `|corr| > 0.95` within a feature group. Every drop is logged with the real pairwise correlation and the column that actually survives.
+   - Tames monetary skew with `sign(x) * log1p(|x|)`.
+   - Adds a year-over-year delta for every remaining numeric column (except the two geographic columns).
+   - One-hot encodes `IndustryCodeC`.
+   - Adds a `_was_missing` flag per incomplete column plus one shared `is_first_year_on_record` flag for every company's first row.
+
+2. **Per fold** (fitted on that fold's training rows only, per `data/splits/temporal_splits.csv`):
+   - Median imputation then `RobustScaler`, mirroring how `build_text_tfidf.py` fits its vocabulary and SVD on train rows only.
+
+**To use it for split `s`**, merge on `nodeID` + `Year` (and pull in text the same way the MD&A section below shows):
+
+```python
+s = 0  # the split you're training on
+
+tabular = pd.read_parquet(f"data/processed/tabular_features_folds/split_{s}")
+splits = pd.read_csv("data/splits/temporal_splits.csv")
+
+# splits already has Label and role (train/test) for this split — no need to fetch
+# Label separately from tabular_clean
+df = splits[splits["split"] == s].merge(tabular, on=["nodeID", "Year"])
+```
+
+**Rules:**
+1. **Use the folder that matches the split**, same as the TF-IDF rule below: split 0 → `tabular_features_folds/split_0`, and so on. The imputation and scaling differ between folds because each is fit on that fold's own training years — mixing them leaks test data.
+2. **There's no `Label` column in `tabular_features`/`tabular_features_folds` themselves.** Get it from `temporal_splits.csv` (as above) or `tabular_clean`.
+3. **`tabular_features` (fold-independent) is for reference/EDA**, not for training directly — it isn't imputed or scaled. Train on the `tabular_features_folds/split_<s>` version.
+
+Load a whole table at once with `pd.read_parquet("data/processed/tabular_features")` or `pd.read_parquet("data/processed/tabular_features_folds/split_<s>")` — both read a directory of year-files transparently. Verified end-to-end in `notebook/check_features.ipynb`, including an explicit check that each fold's imputer/scaler never saw that fold's test rows.
 
 ## MD&A text features
 
