@@ -23,3 +23,6 @@ BT4012 Project Guidelines and Grading Criteria.pdf
 # misc
 docs/
 .vscode/
+
+# graph objects
+data/processed/graph/*.pt

@@ -3,7 +3,6 @@ ActualDebtRatio,F011201A,1.0,F011201A,ratio / other
 FinLeverageRatio,F011201A,1.0,F011201A,ratio / other
 Profitability,F050201B,1.0,F050101B,ratio / other
 MaintainInvest,F061201B,1.0,F061201B,ratio / other
-F080301A,F080101A,1.0,F082802A,ratio / other
 F080302A,F080102A,1.0,F082703A,ratio / other
 F080102A,F082703A,1.0,F082703A,ratio / other
 F080401A,F080201A,1.0,F080201A,ratio / other
@@ -15,6 +14,7 @@ F081202B,F081203B,1.0,F081203B,ratio / other
 F081603B,F081602C,1.0,F081701B,ratio / other
 GrowthOpportunity,F100901A,1.0,F100501A,ratio / other
 F110801B,F110301B,1.0,F110302B,ratio / other
+F080301A,F080101A,1.0,F082802A,ratio / other
 F053301B,F051301B,1.0,F051301B,ratio / other
 F032401B,F032301B,1.0,F032301B,ratio / other
 F082301B,F082201B,1.0,F080501A,ratio / other
