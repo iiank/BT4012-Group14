@@ -36,10 +36,21 @@ YEARS = range(2014, 2023)
 
 MODEL = "BAAI/bge-small-zh-v1.5"
 CHUNK_TOKENS = 510  # 512 limit minus [CLS] and [SEP]
-BATCH = 64
+BATCH = 256
 N_COMPONENTS = 64
 PCA_FIT_YEAR = 2014
 
+
+# iian
+if torch.cuda.is_available():
+    DEVICE = "cuda"
+elif torch.backends.mps.is_available():
+    DEVICE = "mps"
+else:
+    DEVICE = "cpu"
+DTYPE = torch.float16 if DEVICE == "cuda" else torch.float32
+torch.set_num_threads(8)  # physical cores; only matters on the CPU fallback
+# --
 
 @torch.no_grad()
 def embed(text: str, tok, model, device: str) -> np.ndarray:
@@ -49,7 +60,10 @@ def embed(text: str, tok, model, device: str) -> np.ndarray:
     for i in range(0, len(pieces), BATCH):
         batch = [[tok.cls_token_id] + p + [tok.sep_token_id] for p in pieces[i:i + BATCH]]
         enc = tok.pad({"input_ids": batch}, return_tensors="pt").to(device)
-        cls = model(**enc).last_hidden_state[:, 0]
+        # cls = model(**enc).last_hidden_state[:, 0]
+        # iian
+        cls = model(**enc).last_hidden_state[:, 0].float()
+        # --
         vecs.append(torch.nn.functional.normalize(cls, dim=-1).cpu())
     return torch.cat(vecs).mean(0).numpy()
 
@@ -92,13 +106,21 @@ def main(years: list[int]) -> None:
     RAW_DIR.mkdir(parents=True, exist_ok=True)
     todo = [y for y in years if not (RAW_DIR / f"{y}.parquet").exists()]
     if todo:
-        device = "mps" if torch.backends.mps.is_available() else "cpu"
+        # device = "mps" if torch.backends.mps.is_available() else "cpu"
         tok = AutoTokenizer.from_pretrained(MODEL)
         tok.model_max_length = 10**9  # chunking is done here; silences the long-input warning
-        model = AutoModel.from_pretrained(MODEL).to(device).eval()
-        print(f"{MODEL} on {device}; years to embed: {todo}", flush=True)
+
+        # model = AutoModel.from_pretrained(MODEL).to(device).eval()
+        # print(f"{MODEL} on {device}; years to embed: {todo}", flush=True)
+        # for year in todo:
+        #     embed_year(year, tok, model, device)
+
+        # iian
+        model = AutoModel.from_pretrained(MODEL, dtype=DTYPE).to(DEVICE).eval()
+        print(f"{MODEL} on {DEVICE} ({DTYPE}); years to embed: {todo}", flush=True)
         for year in todo:
-            embed_year(year, tok, model, device)
+            embed_year(year, tok, model, DEVICE)
+        # --
     if all((RAW_DIR / f"{y}.parquet").exists() for y in YEARS):
         compress()
     else:
