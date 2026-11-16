@@ -7,15 +7,22 @@ conda env create -f environment.yml
 conda activate bt4012
 ```
 
+## Pipeline
+
+The whole pipeline is two notebooks in `notebook/`, run in order. Each notebook explains its steps and ends every section with a short chart of what it produced.
+
+| Notebook | Sections | Time |
+|---|---|---|
+| `01_data_preprocessing.ipynb` | 1. Clean the tabular features · 2. Load the MD&A text · 3. Clean and tokenise the MD&A text | ~20 min |
+| `02_feature_engineering.ipynb` | 1. Tabular features · 2. Sentiment + readability · 3. Embeddings · 4. TF-IDF per split | ~1 h, plus ~15 h for embeddings unless `data/processed/text_embeddings_raw/` already exists |
+
+**For training you don't need to run either one for the text features:** those outputs are committed (see "MD&A text features" below). The tabular outputs are gitignored, so run notebook 01 section 1 and notebook 02 section 1 (under a minute together) to create them.
+
 ## Tabular features
 
 ### Data cleaning
 
-```
-python src/clean_tabular.py
-```
-
-Reads the nine yearly `ListedCompanyFeatures772_<year>.csv` files and writes:
+Section 1 of `notebook/01_data_preprocessing.ipynb`. Reads the nine yearly `ListedCompanyFeatures772_<year>.csv` files and writes:
 
 - `data/processed/tabular_clean/<year>.parquet`: one row per company-year, with `nodeID`, `Year`, `Label` and 666 features.
 - `data/processed/cleaning_log.csv`: every raw column with its description, whether it was kept or dropped, the reason, and its missing rate before and after.
@@ -40,15 +47,11 @@ Remaining missing values (about 2.5% of cells, mostly ratios that are undefined 
 
 ### Feature engineering
 
-```
-python src/clean_tabular.py                 # if you haven't already — this reads tabular_clean
-python src/build_tabular_features.py        # all folds, ~30s total
-python src/build_tabular_features.py 0      # or just one fold, ~5s
-```
+Section 1 of `notebook/02_feature_engineering.ipynb` (~30 s for all folds; needs `tabular_clean` from notebook 01 section 1).
 
 Outputs are gitignored (too large for GitHub, ~105 MB and ~325 MB) — unlike the MD&A text files below, which are committed directly.
 
-Reads `data/processed/tabular_clean` and writes two kinds of output, the same split as the MD&A text pipeline (`src/build_text_features.py` vs. `src/build_text_tfidf.py`). Neither has a `Label` column — take `Label` from `tabular_clean`, same rule as the text files.
+Reads `data/processed/tabular_clean` and writes two kinds of output, the same split as the MD&A text features (sentiment/readability vs. TF-IDF, sections 2 and 4 of the same notebook). Neither has a `Label` column — take `Label` from `tabular_clean`, same rule as the text files.
 
 | Output | What's in it | Fitted? | Which split uses it |
 |---|---|---|---|
@@ -64,7 +67,7 @@ Reads `data/processed/tabular_clean` and writes two kinds of output, the same sp
    - Adds a `_was_missing` flag per incomplete column plus one shared `is_first_year_on_record` flag for every company's first row.
 
 2. **Per fold** (fitted on that fold's training rows only, per `data/splits/temporal_splits.csv`):
-   - Median imputation then `RobustScaler`, mirroring how `build_text_tfidf.py` fits its vocabulary and SVD on train rows only.
+   - Median imputation then `RobustScaler`, mirroring how the TF-IDF section fits its vocabulary and SVD on train rows only.
 
 **To use it for split `s`**, merge on `nodeID` + `Year` (and pull in text the same way the MD&A section below shows):
 
@@ -120,37 +123,37 @@ That adds 172 text columns (8 + 64 + 100).
 
 ### Rebuilding from the raw MD&A files
 
-Run from the repo root, in this order. Step 1 checks labels against `tabular_clean`, so run `python src/clean_tabular.py` first.
+Run `notebook/01_data_preprocessing.ipynb`, then `notebook/02_feature_engineering.ipynb`, top to bottom. The text steps are:
 
-```
-python src/load_mda.py               # 1. stack the MD&A files
-python src/clean_mda.py              # 2. clean + tokenise          (~45 min)
-python src/build_text_features.py    # 3. sentiment + readability   (~30 min)
-python src/build_text_embeddings.py  # 4. embeddings                (~15 h on an M2 GPU; resumable)
-python src/build_text_tfidf.py       # 5. TF-IDF per split          (~6 min; needs data/splits/temporal_splits.csv)
-```
+| Notebook · section | Writes | Time |
+|---|---|---|
+| 01 · 2. Load the MD&A text | `mda_raw.parquet` | ~30 s |
+| 01 · 3. Clean and tokenise | `mda_clean/<year>.parquet` | ~20 min |
+| 02 · 2. Sentiment + readability | `text_features.parquet` | ~1 h |
+| 02 · 3. Embeddings | `text_embeddings.parquet` | ~15 h on an M2 GPU (resumable), or seconds if `text_embeddings_raw/` exists |
+| 02 · 4. TF-IDF per split | `text_tfidf/split_<s>.parquet` | ~6 min (needs `data/splits/temporal_splits.csv`) |
 
-1. **`load_mda.py`** reads `data/<year>/MDA_<year>*.xlsx` (2021 and 2022 come in two parts) and writes `data/processed/mda_raw.parquet`, one row per company-year. It checks the keys, duplicates and labels against `tabular_clean`.
-2. **`clean_mda.py`** writes `data/processed/mda_clean/<year>.parquet`:
+1. **Load** reads `data/<year>/MDA_<year>*.xlsx` (2021 and 2022 come in two parts) into one row per company-year. It checks the keys, duplicates and labels against `tabular_clean`.
+2. **Clean and tokenise** writes `mda_clean/`:
    - Normalises characters and removes boilerplate: checkbox lines, "无" lines, the investor-visit table, numbered headings and the standard disclosure-exemption sentence.
    - Rejoins lines broken by the PDF conversion.
    - Flags `is_truncated`: 3,409 texts exactly 32,767 characters long, Excel's cell limit, so their endings were lost at the source.
    - Flags `has_text = 0`: texts under 50 characters, or with no Chinese characters.
-   - Tokenises with jieba, keeping the sentiment words whole. `words` is the full token list; `tokens` drops stopwords (`data/stopwords/hit_stopwords.txt`), punctuation and numbers.
-3. **`build_text_features.py`** writes `text_features.parquet`:
-   - **Sentiment:** the share of positive and negative words from the Yao et al. (2021) financial word lists (`data/sentiment/`), with a negated word not counted (e.g. 不 + 增长). `sent_tone = (pos − neg) / (pos + neg)`.
+   - Tokenises with jieba, keeping the sentiment words whole (the two lists in `data/sentiment/` must be present; the cell stops with an error otherwise). `words` is the full token list; `tokens` drops stopwords (`data/stopwords/hit_stopwords.txt`), punctuation and numbers.
+3. **Sentiment + readability** writes `text_features.parquet`:
+   - **Sentiment:** the share of positive and negative words from the Yao et al. (2021) financial word lists (`data/sentiment/`), with a negated word flipped (e.g. 不 + 增长 counts as negative). `sent_tone = (pos − neg) / (pos + neg)`.
    - **Readability:**
      - `read_sent_len`: median words per sentence. Reports with fewer than 5 sentence endings get the 2014 median.
      - `read_complex`: share of words with 3+ characters.
      - `read_advconj`: share of adverbs and conjunctions.
    - Ratios only, so cut-off reports aren't penalised for length.
-4. **`build_text_embeddings.py`** writes `text_embeddings.parquet`:
+4. **Embeddings** writes `text_embeddings.parquet`:
    - Embeds each whole report with `BAAI/bge-small-zh-v1.5`, in 510-token chunks averaged into one vector per report.
    - Compresses 512 → 64 columns with PCA fitted on 2014 only. 2014 is a training year in every split, so the result is the same for all splits with no leakage.
    - The uncompressed vectors are kept locally in `data/processed/text_embeddings_raw/` (gitignored). Years already embedded are skipped on a rerun.
-5. **`build_text_tfidf.py`** writes `text_tfidf/split_<s>.parquet`:
+5. **TF-IDF** writes `text_tfidf/split_<s>.parquet`:
    - For each split, fits TF-IDF on that split's training rows only: single words, `min_df=5`, `max_df=0.5`, 20,000 terms, sublinear term frequency.
    - Then fits TruncatedSVD to 100 columns, and applies both to the split's train and test rows.
    - Values differ between splits, so `tfidf_0` in split 0 is not the same topic as `tfidf_0` in split 3. Don't mix files or compare TF-IDF columns across splits.
 
-`mda_raw.parquet` (832 MB), `mda_clean/` and `text_embeddings_raw/` are too large for GitHub and are gitignored; rebuild them with the steps above.
+`mda_raw.parquet` (832 MB), `mda_clean/` and `text_embeddings_raw/` are too large for GitHub and are gitignored; rebuild them with the notebooks.
