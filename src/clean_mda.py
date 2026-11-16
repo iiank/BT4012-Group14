@@ -44,6 +44,8 @@ STOPWORDS = {
     for line in STOPWORDS_FILE.read_text(encoding="utf-8").splitlines()
 } - {""}
 
+if len(SENTIMENT_FILES) != 2:
+    raise FileNotFoundError(f"expected 2 sentiment lists in data/sentiment/, found {len(SENTIMENT_FILES)}")
 for path in SENTIMENT_FILES:
     jieba.load_userdict(str(path))
 
