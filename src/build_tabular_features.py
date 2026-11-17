@@ -14,8 +14,10 @@ Fold-independent:
      survivor has the fewest missing values). Compares features to each other only,
      never Label, so this is safe to compute globally the same way clean_tabular.py's
      exact-duplicate check already does.
-  2. sign(x) * log1p(|x|) on the 4 statement groups, to tame the heavy right tails found
-     in notebook/eda_tabular.ipynb (e.g. monetary values spanning 0 to 6e11).
+  2. sign(x) * log1p(|x|) on every surviving numeric column except the two geographic
+     ones, to tame heavy right tails — not just the monetary groups (0 to 6e11 in
+     notebook/eda_tabular.ipynb), but also individual ratio columns that blow up to the
+     millions when their denominator is near zero in a handful of company-years.
   3. year-over-year deltas for every remaining numeric column except the two geographic
      columns (RegisterLongitude/RegisterLatitude are fixed facts about a company, not an
      evolving quantity) — this company's own prior reported year, so no fitting and no
@@ -52,8 +54,14 @@ FEATURES_DIR = OUT_DIR / "tabular_features"
 FOLD_OUT_DIR = OUT_DIR / "tabular_features_folds"
 
 KEYS = ["nodeID", "Year"]
-MONETARY_GROUPS = {"balance sheet", "income statement", "cash flow (direct)", "cash flow (indirect)"}
 CORR_THRESHOLD = 0.95
+# RobustScaler only guards against an *exactly* zero train-only IQR (replacing it with a
+# scale of 1). A column that is mostly zero — e.g. a YoY delta for a ratio that rarely
+# changes, made worse by median-imputing the first-year gaps to more zeros — can still
+# get a train-only IQR of 1e-6 or smaller, which is effectively zero: dividing by it
+# turns an ordinary value like 6.5 into millions. Flooring the scale extends the same
+# "don't scale a near-constant column" guard to this near-zero case.
+MIN_SCALE = 1e-2
 
 
 def load_clean() -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -124,8 +132,16 @@ def engineer_fold_independent(clean: pd.DataFrame, log: pd.DataFrame) -> tuple[p
         row["survivor_column"] = survivor
     assert set(row["survivor_column"] for row in all_log_rows) <= set(surviving_numeric)
 
-    monetary_cols = [c for c in surviving_numeric if groups[c] in MONETARY_GROUPS]
-    df[monetary_cols] = np.sign(df[monetary_cols]) * np.log1p(df[monetary_cols].abs())
+    # Originally applied only to the 4 monetary groups (balance sheet/income/cash flow),
+    # on the assumption that "ratio / other" columns were already roughly bounded. That
+    # assumption was wrong: some ratios have a near-zero denominator in a handful of
+    # company-years and blow up to the millions (e.g. F040203B reaches 4.9e7 while its
+    # median is ~5) — RobustScaler doesn't clip anything, so those points alone were
+    # enough to break logistic regression's convergence. Apply the same taming transform
+    # to every surviving numeric column except the two geographic ones, which aren't a
+    # magnitude at all and don't have this problem.
+    log_cols = [c for c in surviving_numeric if c not in ("RegisterLongitude", "RegisterLatitude")]
+    df[log_cols] = np.sign(df[log_cols]) * np.log1p(df[log_cols].abs())
 
     # Sort before deriving anything else (YoY, missing-indicators) that depends on row order or gets concatenated back by position
     df = df.sort_values(KEYS, ignore_index=True)
@@ -171,7 +187,8 @@ def build_fold(s: int, splits: pd.DataFrame, features: pd.DataFrame) -> None:
     x_all_imp = imputer.transform(df[feature_cols])
 
     scaler = RobustScaler()
-    x_train_scaled = scaler.fit_transform(x_train_imp)
+    scaler.fit(x_train_imp)
+    scaler.scale_[scaler.scale_ < MIN_SCALE] = 1.0
     x_all_scaled = scaler.transform(x_all_imp).astype(np.float32)
 
     out = pd.concat(
