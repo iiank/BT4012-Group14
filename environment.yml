@@ -20,8 +20,6 @@ dependencies:
     - --only-binary=torch-scatter, torch-sparse
     - torch==2.14.0
     - torch-geometric
-    # - torch-scatter
-    # - torch-spars
     - jieba
     - torch
     - transformers
