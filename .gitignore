@@ -14,12 +14,6 @@ data/processed/text_embeddings_raw/
 __pycache__/
 .ipynb_checkpoints/
 
-docs/Clarifications.md
-docs/Findings&Issues.md
-
-BT4012 Project Guidelines and Grading Criteria.pdf
-3701716.3715301.pdf
-
 # misc
 .vscode/
 
