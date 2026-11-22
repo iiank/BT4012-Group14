@@ -65,7 +65,7 @@ Sources for the two word lists in `data/`:
 
 ```bash
 git clone https://github.com/iiank/BT4012-Group14.git
-cd BT4012-Group14
+cd BT4012-Group14-main
 ```
 
 ### 2.2 Create the environment
