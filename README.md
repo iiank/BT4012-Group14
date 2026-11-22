@@ -79,7 +79,7 @@ conda activate bt4012
 
 ### 2.3 Run in VS Code
 
-Run the notebooks in VS Code with the **bt4012** kernel. Every notebook finds the data through paths relative to its own folder, so keep the **Jupyter: Notebook File Root** setting at its default, `${fileDirname}`.
+Open the repo's root folder (BT4012-Group14) in VS Code and run the notebooks with the bt4012 kernel.
 
 ## 3. Run the pipeline
 
